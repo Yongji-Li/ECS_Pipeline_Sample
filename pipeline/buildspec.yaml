@@ -1,0 +1,35 @@
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      nodejs: 12
+    commands:
+      - echo Installing NPM dependencies...
+      - npm install
+
+  pre_build:
+    commands:
+      - echo Logging in to Amazon ECR...
+      - aws ecr get-login-password --region ap-northeast-1 | docker login --username AWS --password-stdin 715841370462.dkr.ecr.ap-northeast-1.amazonaws.com
+      - echo "Getting Github commit ID"
+      - export COMMIT_ID="$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)"
+      - echo Commit ID:${COMMIT_ID}
+  build:
+    commands:
+      - echo Building Docker image with tag:${COMMIT_ID}
+      - docker build -t ecs-cicd-pipeline-sample-repo:${COMMIT_ID} -f ./docker/Dockerfile .
+  post_build:
+    commands:
+      - echo Build completed on `date`
+      - echo Tagging the Docker image...
+      - docker tag ecs-cicd-pipeline-sample-repo:${COMMIT_ID} 715841370462.dkr.ecr.ap-northeast-1.amazonaws.com/ecs-cicd-pipeline-sample-repo:${COMMIT_ID}
+      - echo Pushing the Docker image...
+      - docker push 715841370462.dkr.ecr.ap-northeast-1.amazonaws.com/ecs-cicd-pipeline-sample-repo:${COMMIT_ID}
+      # imagedefinitions.jsonファイルを生成し、イメージURIを更新
+      - echo Creating imagedefinitions.json with new image tag...
+      - printf '[{"name":"EcsCicdContainer","imageUri":"715841370462.dkr.ecr.ap-northeast-1.amazonaws.com/ecs-cicd-pipeline-sample-repo:%s"}]' ${COMMIT_ID} > imagedefinitions.json
+artifacts:
+  files:
+    - '**/*'
+    - imagedefinitions.json
